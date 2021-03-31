@@ -1,3 +1,6 @@
+int WSABUF___MAX_SIZE = 1024;
+int WSABUF___MAX_COUNT = 1;
+
 enum XTRINIT___NETWORK_OPERATION_INDEX
 {
 	NETWORK_OPERATION_INDEX___SOCKET___bind_listen = 0,
@@ -26,9 +29,6 @@ struct XTRINIT___NETWORK_REQUEST_BASE {};
 
 typedef void(*XTRINIT___NETWORK_OPERATION)(XTRINIT___NETWORK_REQUEST_BASE *_network_request);
 
-int WSABUF___MAX_SIZE = 1024;
-int WSABUF___MAX_COUNT = 1;
-
 struct XTRINIT___NETWORK_REQUEST : XTRINIT___NETWORK_REQUEST_BASE
 {
 	OVERLAPPED _overlapped;
@@ -37,10 +37,10 @@ struct XTRINIT___NETWORK_REQUEST : XTRINIT___NETWORK_REQUEST_BASE
 	ADDRINFO _socket_addrinfo;
 
 	SOCKET _socket_connected;
-	ADDRINFO _socket_connect_addrinfo;
+	ADDRINFO _socket_connected_addrinfo;
 
 	SOCKET _socket_accepted;
-	ADDRINFO _socket_accept_addrinfo;
+	ADDRINFO _socket_accepted_addrinfo;
 
 	ADDRINFO *_socket_accept_addrinfo_new;
 
@@ -84,26 +84,9 @@ struct XTRINIT___NETWORK_REQUEST : XTRINIT___NETWORK_REQUEST_BASE
 
 	XTRINIT___NETWORK_REQUEST()
 	{
+		ZeroMemory(this, sizeof(XTRINIT___NETWORK_REQUEST));
+
 		this->_overlapped = OVERLAPPED();
-
-		this->_overlapped.hEvent = NULL;
-		this->_overlapped.Internal = 0;
-		this->_overlapped.InternalHigh = 0;
-		this->_overlapped.Offset = 0;
-		this->_overlapped.OffsetHigh = 0;
-		this->_overlapped.Pointer = 0;
-
-		this->_byte_recv = 0;
-		this->_byte_send = 0;
-		this->_byte_transferred = 0;
-
-		this->_thread_internal_id = 0;
-
-		this->_last_error = 0;
-
-		this->_flags = 0;
-
-		this->_is_async = 0;
 
 		this->_wsa_buffers = new WSABUF[WSABUF___MAX_COUNT];
 		this->_wsa_buffer_count = WSABUF___MAX_COUNT;
@@ -191,7 +174,7 @@ void NETWORK_OPERATION___WSAAccept(XTRINIT___NETWORK_REQUEST_BASE *___network_re
 {
 	XTRINIT___NETWORK_REQUEST *_network_request = (XTRINIT___NETWORK_REQUEST *)___network_request;
 
-	_network_request->_socket_accepted = WSAAccept(_network_request->_socket_listening, _network_request->_socket_accept_addrinfo.ai_addr, (LPINT)&_network_request->_socket_accept_addrinfo.ai_addrlen, NULL, 0);
+	_network_request->_socket_accepted = WSAAccept(_network_request->_socket_listening, _network_request->_socket_accepted_addrinfo.ai_addr, (LPINT)&_network_request->_socket_accepted_addrinfo.ai_addrlen, NULL, 0);
 
 	if (_network_request->_socket_accepted != SOCKET_ERROR)
 	{
@@ -327,8 +310,6 @@ struct XTRINIT___NETWORK_DECENTRALIZED_NODE___CONFIG
 
 struct XTRINIT___NETWORK_DECENTRALIZED_NODE
 {
-	WSADATA _wsa_data;
-
 	XTRINIT___NETWORK_REQUEST_LIST_ITEM **_requests_data_transmitting;
 
 	XTRINIT___NETWORK_REQUEST_LIST_ITEM **_requests_connection_processing;
@@ -398,8 +379,6 @@ struct XTRINIT___NETWORK_DECENTRALIZED_NODE
 		};
 
 		this->_completion_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-
-		int _result_wsa_data = WSAStartup(MAKEWORD(2, 2), &this->_wsa_data);
 
 		return 1;
 	};
@@ -539,7 +518,7 @@ struct XTRINIT___NETWORK_DECENTRALIZED_NODE
 
 			_thread_index___get += 1;
 
-			if (_start_index_checking == _thread_index___get && _wait_in_milliseconds != 0x0) { Sleep(_wait_in_milliseconds); printf("\n sleep get_processed_network_request"); };
+			if (_start_index_checking == _thread_index___get && _wait_in_milliseconds != 0x0) { Sleep(_wait_in_milliseconds); };
 			if (_start_index_checking == _thread_index___get && _wait_in_milliseconds == 0x0) { break; };
 		};
 
