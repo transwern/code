@@ -1,5 +1,50 @@
+#pragma once
+
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+#include <process.h>
+
+#pragma comment(lib, "Ws2_32.lib")
+
 int WSABUF___MAX_SIZE = 1024;
 int WSABUF___MAX_COUNT = 1;
+
+struct XTRINIT___EXCEPTION
+{
+	int _message_length;
+	char *_message;
+
+	int _last_error;
+
+	int thread_handle;
+	int thread_id;
+
+	XTRINIT___EXCEPTION(int _last_error = 0, int thread_handle = 0, int thread_id = 0, int _message_length = 0, char* _message = 0)
+	{
+		this-> _message_length = _message_length;
+		this->_message = _message;
+
+		this->_last_error = _last_error;
+
+		this->thread_handle = thread_handle;
+		this->thread_id = thread_id;
+	};
+};
+
+typedef void(*XTRINIT___ENTRY___EXCEPTION_LOGGER)(XTRINIT___EXCEPTION *_exception);
+
+int _exception_loggers___count;
+XTRINIT___ENTRY___EXCEPTION_LOGGER *EXCEPTION_LOGGERS;
+
+void XTRINIT___Log(XTRINIT___EXCEPTION *_exception)
+{
+	for (int index = 0; index < _exception_loggers___count; index++)
+	{
+		if (EXCEPTION_LOGGERS[index] != NULL) { EXCEPTION_LOGGERS[index](_exception); };
+	};
+};
 
 enum XTRINIT___NETWORK_OPERATION_INDEX
 {
@@ -19,8 +64,10 @@ enum XTRINIT___NETWORK_DECENTRALIZED_NODE___THREAD_STATE
 	NDN___THREAD_STATE___NETWORK_TASK_EXECUTING,
 	NDN___THREAD_STATE___NETWORK_TASK_PROCESSED,
 	
+	NDN___THREAD_STATE___INITIALIZED,
 	NDN___THREAD_STATE___START,
 	NDN___THREAD_STATE___STOP,
+	NDN___THREAD_STATE___FINALIZED,
 
 	NDN___THREA_STATE___TOTAL_COUNT
 };
@@ -41,8 +88,6 @@ struct XTRINIT___NETWORK_REQUEST : XTRINIT___NETWORK_REQUEST_BASE
 
 	SOCKET _socket_accepted;
 	ADDRINFO _socket_accepted_addrinfo;
-
-	ADDRINFO *_socket_accept_addrinfo_new;
 
 	SOCKET _socket_listening;
 	ADDRINFO _socket_listening_addrinfo;
@@ -124,8 +169,6 @@ struct XTRINIT___NETWORK_REQUEST_LIST_ITEM
 		this->_prev = NULL;
 	};
 };
-
-
 
 
 void NETWORK_OPERATION___WSARecv(XTRINIT___NETWORK_REQUEST_BASE *___network_request)
@@ -218,85 +261,97 @@ void NETWORK_OPERATION___closesocket(XTRINIT___NETWORK_REQUEST_BASE *___network_
 
 unsigned __stdcall ___xtrinit___thread___network_synchronizing(LPVOID lpThreadParameter)
 {
-	int _thread_internal_id = ((int *)lpThreadParameter)[0];
-
-	HANDLE _completion_port = (HANDLE)((int *)lpThreadParameter)[1];
-
-	XTRINIT___NETWORK_REQUEST_LIST_ITEM *_request_current_data_transmitting     = (XTRINIT___NETWORK_REQUEST_LIST_ITEM *)((int *)lpThreadParameter)[2]; //_requests_data_transmitting[_thread_internal_id];
-	XTRINIT___NETWORK_REQUEST_LIST_ITEM *_request_current_connection_processing = (XTRINIT___NETWORK_REQUEST_LIST_ITEM *)((int *)lpThreadParameter)[3];// _requests_connection_processing[_thread_internal_id];
-
-	XTRINIT___NETWORK_OPERATION *NETWORK_OPERATION_SWITCH = (XTRINIT___NETWORK_OPERATION *)((int *)lpThreadParameter)[4];
-
-	int _time_in_milliseconds = ((int *)lpThreadParameter)[5];
-
-	XTRINIT___NETWORK_REQUEST *_request = NULL;
-
-	SOCKET *_socket_new = new SOCKET();
-
-	LPOVERLAPPED _overlapped_new = NULL;
-
-	int _byte_transferred;
-
-	while (true)
+	try
 	{
+		int _thread_internal_id = ((int *)lpThreadParameter)[0];
+
+		HANDLE _completion_port = (HANDLE)((int *)lpThreadParameter)[1];
+
+		XTRINIT___NETWORK_REQUEST_LIST_ITEM *_request_current_data_transmitting = (XTRINIT___NETWORK_REQUEST_LIST_ITEM *)((int *)lpThreadParameter)[2]; //_requests_data_transmitting[_thread_internal_id];
+		XTRINIT___NETWORK_REQUEST_LIST_ITEM *_request_current_connection_processing = (XTRINIT___NETWORK_REQUEST_LIST_ITEM *)((int *)lpThreadParameter)[3];// _requests_connection_processing[_thread_internal_id];
+
+		XTRINIT___NETWORK_OPERATION *NETWORK_OPERATION_SWITCH = (XTRINIT___NETWORK_OPERATION *)((int *)lpThreadParameter)[4];
+
+		int _time_in_milliseconds = ((int *)lpThreadParameter)[5];
+
+		XTRINIT___NETWORK_REQUEST *_request = NULL;
+
+		SOCKET *_socket_new = new SOCKET();
+
+		LPOVERLAPPED _overlapped_new = NULL;
+
+		int _byte_transferred;
+
 		while (true)
 		{
-			if (_request_current_connection_processing->_is_available != NDN___THREAD_STATE___NETWORK_TASK_EXECUTING)
+			while (true)
 			{
-				int _result___queue_completion_status = GetQueuedCompletionStatus(_completion_port, (LPDWORD)&_byte_transferred, (LPDWORD)_socket_new, &_overlapped_new, _time_in_milliseconds);
-
-				if (_result___queue_completion_status != 0)
+				if (_request_current_connection_processing->_is_available != NDN___THREAD_STATE___NETWORK_TASK_EXECUTING)
 				{
-					_request = (XTRINIT___NETWORK_REQUEST *)_overlapped_new;
-					_request->_byte_transferred = _byte_transferred;
+					int _result___queue_completion_status = GetQueuedCompletionStatus(_completion_port, (LPDWORD)&_byte_transferred, (LPDWORD)_socket_new, &_overlapped_new, _time_in_milliseconds);
 
-					goto PROCESS___NEXT___ASYNC;
+					if (_result___queue_completion_status != 0)
+					{
+						_request = (XTRINIT___NETWORK_REQUEST *)_overlapped_new;
+						_request->_byte_transferred = _byte_transferred;
+
+						goto PROCESS___NEXT___ASYNC;
+					};
+				}
+				else
+				{
+					_request = _request_current_connection_processing->_request;
+
+				PREPROCESS:
+
+					_request->_thread_internal_id = _thread_internal_id;
+
+					for (int index = 0; index < _request->_count_PREPROCESS; index++) { _request->PREPROCESS[index](_request); };
+
+					break;
 				};
-			}
-			else
-			{
-				_request = _request_current_connection_processing->_request;
-
-			PREPROCESS:
-
-				for (int index = 0; index < _request->_count_PREPROCESS; index++) { _request->PREPROCESS[index](_request); };
-
-				break;
 			};
+
+			_request->_completion_port = _completion_port;
+
+			NETWORK_OPERATION_SWITCH[_request->OPERATION_INDEX](_request);
+
+		PROCESS___NEXT:
+
+			_request_current_connection_processing = _request_current_connection_processing->_next;
+			_request_current_connection_processing->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_PROCESSED;
+
+			goto POSTPROCESS;
+
+		PROCESS___NEXT___ASYNC:
+
+			_request->_is_async = 0;
+
+			_request_current_data_transmitting->_request = _request;
+
+			_request_current_data_transmitting->_next = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
+			_request_current_data_transmitting->_next->_prev = _request_current_data_transmitting;
+
+			_request_current_data_transmitting = _request_current_data_transmitting->_next;
+
+			_request_current_data_transmitting->_prev->_is_async = 0x0;
+			_request_current_data_transmitting->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_PROCESSED;
+
+		POSTPROCESS:
+
+			_request->_thread_internal_id = _thread_internal_id;
+
+			for (int index = 0; index < _request->_count_POSTPROCESS; index++) { _request->POSTPROCESS[index](_request); };
 		};
+	}
+	catch (...)
+	{
+		XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
 
-		_request->_completion_port = _completion_port;
+		XTRINIT___Log(_exception);
+	}
 
-		NETWORK_OPERATION_SWITCH[_request->OPERATION_INDEX](_request);
-
-	PROCESS___NEXT:
-
-		_request_current_connection_processing = _request_current_connection_processing->_next;
-		_request_current_connection_processing->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_PROCESSED;
-
-		goto POSTPROCESS;
-
-	PROCESS___NEXT___ASYNC:
-
-		_request->_is_async = 0;
-
-		_request_current_data_transmitting->_request = _request;
-
-		_request_current_data_transmitting->_next = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
-		_request_current_data_transmitting->_next->_prev = _request_current_data_transmitting;
-
-		_request_current_data_transmitting = _request_current_data_transmitting->_next;
-
-		_request_current_data_transmitting->_prev->_is_async = 0x0;
-		_request_current_data_transmitting->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_PROCESSED;
-
-	POSTPROCESS:
-		for (int index = 0; index < _request->_count_POSTPROCESS; index++) { _request->POSTPROCESS[index](_request); };
-
-		_request->_thread_internal_id = _thread_internal_id;
-	};
-
-	return 1;
+	return 0;
 };
 
 
@@ -338,139 +393,240 @@ struct XTRINIT___NETWORK_DECENTRALIZED_NODE
 
 	int **___thread___parameters;
 
+	int ___thread___parameters___count;
+
 
 
 	int initialize(XTRINIT___NETWORK_DECENTRALIZED_NODE___CONFIG *_config = NULL)
 	{
-		ZeroMemory(this, sizeof(XTRINIT___NETWORK_DECENTRALIZED_NODE));
-
-		if (_config != NULL)
+		try
 		{
-			this->___thread___network_synchronizing___count                  = _config->___thread___network_synchronizing___count;
-			this->___thread___network_synchronizing___sleep_in_milliseconds  = _config->___thread___network_synchronizing___sleep_in_milliseconds;
-			this->_listen_max_connection                                     = _config->_listen_max_connection;
+			ZeroMemory(this, sizeof(XTRINIT___NETWORK_DECENTRALIZED_NODE));
+
+			if (_config != NULL)
+			{
+				this->___thread___network_synchronizing___count = _config->___thread___network_synchronizing___count;
+				this->___thread___network_synchronizing___sleep_in_milliseconds = _config->___thread___network_synchronizing___sleep_in_milliseconds;
+				this->_listen_max_connection = _config->_listen_max_connection;
+			};
+
+
+			NETWORK_OPERATION_SWITCH = new XTRINIT___NETWORK_OPERATION[NETWORK_OPERATION_INDEX___TOTAL_COUNT];
+
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___bind_listen] = NETWORK_OPERATION___bind_listen;
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSAAccept] = NETWORK_OPERATION___WSAAccept;
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___connect] = NETWORK_OPERATION___connect;
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSARecv] = NETWORK_OPERATION___WSARecv;
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSASend] = NETWORK_OPERATION___WSASend;
+			NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___closesocket] = NETWORK_OPERATION___closesocket;
+
+			_requests_data_transmitting = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
+			_requests_connection_processing = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
+			_processed_requests_connection_processing = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
+			_processed_requests_data_transmitting = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
+
+			___thread___handles = new HANDLE[___thread___network_synchronizing___count];
+			___thread___ids = new unsigned int[___thread___network_synchronizing___count];
+
+			___thread___parameters = (int **)malloc(sizeof(int)*___thread___network_synchronizing___count);
+			___thread___parameters___count = 6;
+
+			for (int index = 0; index < ___thread___network_synchronizing___count; index++)
+			{
+				_processed_requests_connection_processing[index] = _requests_connection_processing[index] = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
+				_processed_requests_data_transmitting[index] = _requests_data_transmitting[index] = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
+
+				___thread___handles[index] = 0;
+				___thread___ids[index] = 0;
+
+				___thread___parameters[index] = new int[___thread___parameters___count];
+			};
+
+			this->_completion_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+
+			this->___thread___state = NDN___THREAD_STATE___INITIALIZED;
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
+
+			XTRINIT___Log(_exception);
 		}
 
-
-		NETWORK_OPERATION_SWITCH = new XTRINIT___NETWORK_OPERATION[NETWORK_OPERATION_INDEX___TOTAL_COUNT];
-
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___bind_listen]   = NETWORK_OPERATION___bind_listen;
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSAAccept]     = NETWORK_OPERATION___WSAAccept;
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___connect]       = NETWORK_OPERATION___connect;
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSARecv]       = NETWORK_OPERATION___WSARecv;
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___WSASend]       = NETWORK_OPERATION___WSASend;
-		NETWORK_OPERATION_SWITCH[NETWORK_OPERATION_INDEX___SOCKET___closesocket]   = NETWORK_OPERATION___closesocket;
-
-		_requests_data_transmitting                = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
-		_requests_connection_processing            = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
-		_processed_requests_connection_processing  = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
-		_processed_requests_data_transmitting      = (XTRINIT___NETWORK_REQUEST_LIST_ITEM **)malloc(sizeof(XTRINIT___NETWORK_REQUEST_LIST_ITEM) * ___thread___network_synchronizing___count);
-
-		___thread___handles = new HANDLE[___thread___network_synchronizing___count];
-		___thread___ids = new unsigned int[___thread___network_synchronizing___count];
-
-		for (int index = 0; index < ___thread___network_synchronizing___count; index++)
-		{
-			_processed_requests_connection_processing[index] = _requests_connection_processing[index] = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
-			_processed_requests_data_transmitting[index]     = _requests_data_transmitting[index]     = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
-
-			___thread___handles[index] = 0;
-			___thread___ids[index] = 0;
-		};
-
-		this->_completion_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-
-		return 1;
+		return 0;
 	};
 
 
 	int start() 
 	{
-		if (this->___thread___state != NDN___THREAD_STATE___START)
+		try
 		{
-			int **___thread___parameters = (int **)malloc(sizeof(int)*___thread___network_synchronizing___count);
-
-			for (int index = 0; index < this->___thread___network_synchronizing___count; index++)
+			if (this->___thread___state != NDN___THREAD_STATE___START)
 			{
-				___thread___parameters[index] = new int[6];
-				___thread___parameters[index][0] = index;
-				___thread___parameters[index][1] = (int)_completion_port;
-				___thread___parameters[index][2] = (int)_requests_data_transmitting[index];
-				___thread___parameters[index][3] = (int)_requests_connection_processing[index];
-				___thread___parameters[index][4] = (int)NETWORK_OPERATION_SWITCH;
-				___thread___parameters[index][5] = (int)___thread___network_synchronizing___sleep_in_milliseconds;
 
-				___thread___handles[index] = (HANDLE)_beginthreadex(NULL, 0, ___xtrinit___thread___network_synchronizing, (void *)___thread___parameters[index], 0, &___thread___ids[index]);
+
+				for (int index = 0; index < this->___thread___network_synchronizing___count; index++)
+				{
+					___thread___parameters[index][0] = index;
+					___thread___parameters[index][1] = (int)_completion_port;
+					___thread___parameters[index][2] = (int)_requests_data_transmitting[index];
+					___thread___parameters[index][3] = (int)_requests_connection_processing[index];
+					___thread___parameters[index][4] = (int)NETWORK_OPERATION_SWITCH;
+					___thread___parameters[index][5] = (int)___thread___network_synchronizing___sleep_in_milliseconds;
+
+					___thread___handles[index] = (HANDLE)_beginthreadex(NULL, 0, ___xtrinit___thread___network_synchronizing, (void *)___thread___parameters[index], 0, &___thread___ids[index]);
+				};
+
+				this->___thread___state = NDN___THREAD_STATE___START;
+
+				return 1;
 			};
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
 
-			this->___thread___state = NDN___THREAD_STATE___START;
+			XTRINIT___Log(_exception);
+		}
 
-			return 0;
-		};
-
-		return 1;
+		return 0;
 	};
 
 	int stop()
 	{
-		if (this->___thread___state != NDN___THREAD_STATE___STOP)
+		try
 		{
-			for (int index = 0; index < ___thread___network_synchronizing___count; index++)
+			if (this->___thread___state != NDN___THREAD_STATE___STOP)
 			{
-				___thread___handles[index] = (HANDLE)TerminateThread(___thread___handles[index], 0);
-				___thread___ids[index] = 0;
+				for (int index = 0; index < ___thread___network_synchronizing___count; index++)
+				{
+					TerminateThread(___thread___handles[index], 0);
+
+					___thread___handles[index] = 0;
+					___thread___ids[index] = 0;
+				};
+				this->___thread___state = NDN___THREAD_STATE___STOP;
+
+				return 1;
 			};
-			this->___thread___state = NDN___THREAD_STATE___STOP;
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
 
-			return 0;
-		};
+			XTRINIT___Log(_exception);
+		}
 
-		return 1;
+		return 0;
 	};
 
-	int finalize() { return 0; };
+	int finalize() 
+	{
+		try
+		{
+			delete[NETWORK_OPERATION_INDEX___TOTAL_COUNT] NETWORK_OPERATION_SWITCH;                     NETWORK_OPERATION_SWITCH = nullptr;
+
+			delete[___thread___network_synchronizing___count] ___thread___handles;						___thread___handles = nullptr;
+			delete[___thread___network_synchronizing___count] ___thread___ids;							___thread___ids = nullptr;
+
+			for (int index = 0; index < this->___thread___network_synchronizing___count; index++)
+			{
+				delete[___thread___parameters___count] ___thread___parameters[index];
+			}
+
+			delete[___thread___network_synchronizing___count] ___thread___parameters;					___thread___parameters = nullptr;
+
+			for (int index = 0; index < ___thread___network_synchronizing___count; index++)
+			{
+				while (_requests_connection_processing[index]->_prev != NULL)
+				{
+					_requests_connection_processing[index] = _requests_connection_processing[index]->_prev;
+
+					delete _requests_connection_processing[index]->_next;
+				}
+
+				delete _requests_connection_processing[index];
+
+				while (_requests_data_transmitting[index]->_prev != NULL)
+				{
+					_requests_data_transmitting[index] = _requests_data_transmitting[index]->_prev;
+
+					delete _requests_data_transmitting[index]->_next;
+				}
+
+				delete _requests_data_transmitting[index];
+			}
+
+			delete[] _requests_connection_processing;                       _requests_connection_processing = nullptr;
+			delete[] _requests_data_transmitting;                           _requests_data_transmitting = nullptr;
+			delete[] _processed_requests_connection_processing;             _processed_requests_connection_processing = nullptr;
+			delete[] _processed_requests_data_transmitting;                 _processed_requests_data_transmitting = nullptr;
+
+			this->___thread___state = NDN___THREAD_STATE___FINALIZED;
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
+
+			XTRINIT___Log(_exception);
+		}
+
+		return 0; 
+	};
 
 
 
 	int add_new_network_request(XTRINIT___NETWORK_REQUEST *_request, int _wait_free_thread_in_milliseconds = 0)
 	{
-		int _start_index_checking = _thread_index___add;
-
-		while (true)
+		try
 		{
-			if (_thread_index___add >= ___thread___network_synchronizing___count)
-			{
-				_thread_index___add = 0;
-			}
+			int _start_index_checking = _thread_index___add;
 
-			if (_requests_connection_processing[_thread_index___add]->_prev != NULL
-				&& _requests_connection_processing[_thread_index___add]->_prev->_request != NULL
-				&& _requests_connection_processing[_thread_index___add]->_prev->_request->OPERATION_INDEX == NETWORK_OPERATION_INDEX___SOCKET___WSAAccept)
+			while (true)
 			{
-				goto THREAD_NEXT;
+				if (_thread_index___add >= ___thread___network_synchronizing___count)
+				{
+					_thread_index___add = 0;
+				}
+
+				if (_requests_connection_processing[_thread_index___add]->_prev != NULL
+					&& _requests_connection_processing[_thread_index___add]->_prev->_request != NULL
+					&& _requests_connection_processing[_thread_index___add]->_prev->_request->OPERATION_INDEX == NETWORK_OPERATION_INDEX___SOCKET___WSAAccept)
+				{
+					goto THREAD_NEXT;
+				};
+
+
+				_requests_connection_processing[_thread_index___add]->_request = _request;
+				_requests_connection_processing[_thread_index___add]->_is_async = _request->_is_async;
+
+				_requests_connection_processing[_thread_index___add]->_next = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
+				_requests_connection_processing[_thread_index___add]->_next->_prev = _requests_connection_processing[_thread_index___add];
+				_requests_connection_processing[_thread_index___add] = _requests_connection_processing[_thread_index___add]->_next;
+				_requests_connection_processing[_thread_index___add]->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_EXECUTING;
+
+				_thread_index___add += 1;
+
+				break;
+
+			THREAD_NEXT:
+
+				_thread_index___add += 1;
+
+				if (_start_index_checking == _thread_index___get)
+				{
+					if (_wait_free_thread_in_milliseconds > 0x0) { Sleep(_wait_free_thread_in_milliseconds); printf("\n sleep get_processed_network_request"); }
+					else { break; };
+				};
 			};
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
 
-
-			_requests_connection_processing[_thread_index___add]->_request = _request;
-			_requests_connection_processing[_thread_index___add]->_is_async = _request->_is_async;
-
-			_requests_connection_processing[_thread_index___add]->_next = new XTRINIT___NETWORK_REQUEST_LIST_ITEM();
-			_requests_connection_processing[_thread_index___add]->_next->_prev = _requests_connection_processing[_thread_index___add];
-			_requests_connection_processing[_thread_index___add] = _requests_connection_processing[_thread_index___add]->_next;
-			_requests_connection_processing[_thread_index___add]->_prev->_is_available = NDN___THREAD_STATE___NETWORK_TASK_EXECUTING;
-
-			_thread_index___add += 1;
-
-			break;
-
-		THREAD_NEXT:
-
-			_thread_index___add += 1;
-
-			if (_start_index_checking == _thread_index___add && _wait_free_thread_in_milliseconds != 0x0) { Sleep(_wait_free_thread_in_milliseconds); };
-			if (_start_index_checking == _thread_index___add && _wait_free_thread_in_milliseconds == 0x0) { break; };
-		};
-
+			XTRINIT___Log(_exception);
+		}
+		
 		return 0;
 	};
 
@@ -478,50 +634,320 @@ struct XTRINIT___NETWORK_DECENTRALIZED_NODE
 	{
 		XTRINIT___NETWORK_REQUEST *_return_request = NULL;
 
-		int _start_index_checking = _thread_index___get;
-
-		while (true)
+		try
 		{
-			if (_thread_index___get >= ___thread___network_synchronizing___count)
+			int _start_index_checking = _thread_index___get;
+
+			while (true)
 			{
-				_thread_index___get = 0; 
+				if (_thread_index___get >= ___thread___network_synchronizing___count)
+				{
+					_thread_index___get = 0;
 
-				if (_thread_index___get_equalizer == 0) _thread_index___get_equalizer = 1;
-				else                                    _thread_index___get_equalizer = 0;
-			}
+					if (_thread_index___get_equalizer == 0) _thread_index___get_equalizer = 1;
+					else                                    _thread_index___get_equalizer = 0;
+				}
 
-			if (_thread_index___get_equalizer == 0 && _processed_requests_connection_processing[_thread_index___get]->_is_available == NDN___THREAD_STATE___NETWORK_TASK_PROCESSED)
-			{
-				_return_request = _processed_requests_connection_processing[_thread_index___get]->_request;
-				_processed_requests_connection_processing[_thread_index___get]->_request = NULL;
-				_processed_requests_connection_processing[_thread_index___get] = _processed_requests_connection_processing[_thread_index___get]->_next;
+				if (_thread_index___get_equalizer == 0 && _processed_requests_connection_processing[_thread_index___get]->_is_available == NDN___THREAD_STATE___NETWORK_TASK_PROCESSED)
+				{
+					_return_request = _processed_requests_connection_processing[_thread_index___get]->_request;
+					_processed_requests_connection_processing[_thread_index___get]->_request = NULL;
+					_processed_requests_connection_processing[_thread_index___get] = _processed_requests_connection_processing[_thread_index___get]->_next;
 
-				_thread_index___get_equalizer = 1;
+					_thread_index___get_equalizer = 1;
 
-				if (_request != NULL) {*_request = _return_request;};
+					if (_request != NULL) { *_request = _return_request; };
 
-				return _return_request;
+					return _return_request;
+				};
+
+				if (_processed_requests_data_transmitting[_thread_index___get]->_is_available == NDN___THREAD_STATE___NETWORK_TASK_PROCESSED)
+				{
+					_return_request = _processed_requests_data_transmitting[_thread_index___get]->_request;
+					_processed_requests_data_transmitting[_thread_index___get]->_request = NULL;
+					_processed_requests_data_transmitting[_thread_index___get] = _processed_requests_data_transmitting[_thread_index___get]->_next;
+
+					_thread_index___get_equalizer = 0;
+
+					if (_request != NULL) { *_request = _return_request; };
+
+					return _return_request;
+				};
+
+				_thread_index___get += 1;
+
+				if (_start_index_checking == _thread_index___get)
+				{
+					if (_wait_in_milliseconds > 0x0) { Sleep(_wait_in_milliseconds); printf("\n sleep get_processed_network_request"); }
+					else { break; };
+				};
 			};
+		}
+		catch (...)
+		{
+			XTRINIT___EXCEPTION *_exception = new XTRINIT___EXCEPTION();
 
-			if (_processed_requests_data_transmitting[_thread_index___get]->_is_available == NDN___THREAD_STATE___NETWORK_TASK_PROCESSED)
-			{
-				_return_request = _processed_requests_data_transmitting[_thread_index___get]->_request;
-				_processed_requests_data_transmitting[_thread_index___get]->_request = NULL;
-				_processed_requests_data_transmitting[_thread_index___get] = _processed_requests_data_transmitting[_thread_index___get]->_next;
-
-				_thread_index___get_equalizer = 0;
-
-				if (_request != NULL) { *_request = _return_request; };
-
-				return _return_request;
-			};
-
-			_thread_index___get += 1;
-
-			if (_start_index_checking == _thread_index___get && _wait_in_milliseconds != 0x0) { Sleep(_wait_in_milliseconds); };
-			if (_start_index_checking == _thread_index___get && _wait_in_milliseconds == 0x0) { break; };
-		};
+			XTRINIT___Log(_exception);
+		}
 
 		return _return_request;
 	};
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+unsigned __stdcall ___network_communication(LPVOID lpThreadParameters)
+{
+	WSADATA _wsa_data;
+
+	int _result_wsa_data = WSAStartup(MAKEWORD(2, 2), &_wsa_data);
+
+	printf("\n\n_result WSAStartup : %d", _result_wsa_data);
+
+	//char *ip_address = "192.168.100.7";
+	char *ip_address = "127.0.0.1";
+	typedef char* pchar;
+
+	char *_message_for_send = "server : 192.168.100.7:19777  accept your connection !          ";
+	char *_message_empty = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+	int _message_length = 64;
+
+	pchar ports[3];
+
+	ports[0] = "19777";
+	ports[1] = "19888";
+	ports[2] = "19999";
+
+	ADDRINFO *_addrinfo_19777 = NULL;
+	ADDRINFO *_addrinfo_19888 = NULL;
+	ADDRINFO *_addrinfo_19999 = NULL;
+
+	ADDRINFO _addrinfo_hints;
+
+	ZeroMemory(&_addrinfo_hints, sizeof(_addrinfo_hints));
+
+	_addrinfo_hints.ai_family = AF_INET;
+	_addrinfo_hints.ai_protocol = IPPROTO_TCP;
+	_addrinfo_hints.ai_socktype = SOCK_STREAM;
+
+	int _result = 0;
+
+	_result = getaddrinfo(NULL, ports[0], &_addrinfo_hints, &_addrinfo_19777);
+
+	printf("\n_result : %d", _result);
+
+	_result = getaddrinfo(ip_address, ports[1], &_addrinfo_hints, &_addrinfo_19888);
+
+	printf("\n_result : %d", _result);
+
+	_result = getaddrinfo(ip_address, ports[2], &_addrinfo_hints, &_addrinfo_19999);
+
+	printf("\n_result : %d", _result);
+
+	//getchar();
+
+	XTRINIT___NETWORK_DECENTRALIZED_NODE___CONFIG *_config = new XTRINIT___NETWORK_DECENTRALIZED_NODE___CONFIG();
+
+	_config->_listen_max_connection = 256;
+	_config->___thread___network_synchronizing___count = 4;
+	_config->___thread___network_synchronizing___sleep_in_milliseconds = 10;
+
+	XTRINIT___NETWORK_DECENTRALIZED_NODE *_node = new XTRINIT___NETWORK_DECENTRALIZED_NODE();
+
+	_node->initialize(_config);
+	_node->start();
+
+
+	XTRINIT___NETWORK_REQUEST *_task_bind_listen_accept = new XTRINIT___NETWORK_REQUEST();
+	_task_bind_listen_accept->_buffer = "[ TASK ] : BIND LISTEN ACCEPT   .";
+	_task_bind_listen_accept->_buffer_length = 32;
+	_task_bind_listen_accept->_socket_addrinfo = *_addrinfo_19777;
+	_task_bind_listen_accept->_socket_accepted_addrinfo = ADDRINFO();
+	_task_bind_listen_accept->_socket_accepted_addrinfo.ai_addr = new sockaddr();
+	_task_bind_listen_accept->_socket_accepted_addrinfo.ai_addrlen = sizeof(sockaddr);
+
+
+	_task_bind_listen_accept->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___bind_listen;
+	//_task_bind_listen_accept->_operation_type = OPERATION_TYPE___SOCKET_BIND_LISTEN;
+
+
+	XTRINIT___NETWORK_REQUEST *_task_connect = new XTRINIT___NETWORK_REQUEST();
+	_task_connect->_buffer = "[ TASK ] : CONNECT              .";
+	_task_connect->_buffer_length = 32;
+	_task_connect->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___connect;//_operation_type = OPERATION_TYPE___SOCKET_CONNECT;
+	_task_connect->_socket_addrinfo = *_addrinfo_19777;
+
+	XTRINIT___NETWORK_REQUEST *_task_send = new XTRINIT___NETWORK_REQUEST();
+	_task_send->_buffer = "[ TASK ] : SEND                 .";
+	_task_send->_buffer_length = 32;
+	_task_send->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___WSASend;//->_operation_type = OPERATION_TYPE___SOCKET_WRITE;
+	_task_send->_is_async = 1;
+
+	//	memccpy(_task_send->_wsa_buffers[0].buf, _message_for_send, _message_length, sizeof(char));
+	for (int index = 0; index < _message_length; index++)
+	{
+		_task_send->_wsa_buffers[0].buf[index] = _message_for_send[index];
+	}
+
+	_task_send->_wsa_buffers[0].len = _message_length;
+
+
+	XTRINIT___NETWORK_REQUEST *_task_recv = new XTRINIT___NETWORK_REQUEST();
+	_task_recv->_buffer = "[ TASK ] : RECV                 .";
+	_task_recv->_buffer_length = 32;
+	_task_recv->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___WSARecv;//->_operation_type = OPERATION_TYPE___SOCKET_READ;
+	_task_recv->_wsa_buffers[0].len = _message_length;
+	_task_recv->_is_async = 1;
+
+
+	XTRINIT___NETWORK_REQUEST *_task = NULL;
+
+	if (lpThreadParameters == 0)
+	{
+		//___xtrinit___network___set_new_task(_task_bind_listen_accept, 0, OPERATION_TYPE___SOCKET_BIND_LISTEN);
+		_node->add_new_network_request(_task_bind_listen_accept, 100);
+
+		//_task = ___xtrinit___network___get_executed_task(NULL, 1, 200);
+		_task = _node->get_processed_network_request(NULL, 100);	
+
+		//___xtrinit___network___set_new_task(_task_bind_listen_accept, 0, OPERATION_TYPE___SOCKET_ACCEPT);
+		_task->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___WSAAccept;
+		_node->add_new_network_request(_task_bind_listen_accept, 100);
+
+
+		//_task = ___xtrinit___network___get_executed_task(NULL, 1, 200);
+		_task = _node->get_processed_network_request(NULL, 100);
+
+		_task_send->_socket = _task->_socket_accepted;
+		_task_send->_socket_addrinfo = _task->_socket_accepted_addrinfo;
+		//___xtrinit___network___set_new_task(_task_send, 1);
+		_node->add_new_network_request(_task_send, 100);
+
+
+		_task_recv->_socket = _task->_socket_accepted;
+		_task_recv->_socket_addrinfo = _task->_socket_accepted_addrinfo;
+		//___xtrinit___network___set_new_task(_task_recv, 1);
+		_node->add_new_network_request(_task_recv, 100);
+	}
+	else
+	{
+		//___xtrinit___network___set_new_task(_task_connect, 0, OPERATION_TYPE___SOCKET_CONNECT);
+		_node->add_new_network_request(_task_connect, 100);
+
+		//_task = ___xtrinit___network___get_executed_task(NULL, 1, 200);
+		_task = _node->get_processed_network_request(NULL, 100);
+
+		_task_send->_socket = _task->_socket_connected;
+		_task_send->_socket_addrinfo = _task->_socket_accepted_addrinfo;
+
+		_task_send->_wsa_buffers[0].buf[0] = 7;
+		_task_send->_wsa_buffers[0].buf[1] = 7;
+		_task_send->_wsa_buffers[0].buf[2] = 7;
+		//___xtrinit___network___set_new_task(_task_send, 1);
+		_node->add_new_network_request(_task_send, 100);
+
+
+		_task_recv->_socket = _task->_socket_connected;
+		_task_recv->_socket_addrinfo = _task->_socket_accepted_addrinfo;
+		//___xtrinit___network___set_new_task(_task_recv, 1);
+		_node->add_new_network_request(_task_recv, 100);
+
+	};
+
+
+	int _pocket = 1;
+
+	while (true)
+	{
+		//_task = ___xtrinit___network___get_executed_task(NULL, 0, 50);
+		_task = _node->get_processed_network_request(NULL, 10);
+
+		//if (_pocket % 100 == 0) printf("\n%8d", _pocket);
+
+		//if (_task->_operation_type == OPERATION_TYPE___SOCKET_WRITE)
+		if (_task->OPERATION_INDEX == NETWORK_OPERATION_INDEX___SOCKET___WSASend)
+		{
+			if (_task->_is_async == 0)
+			{
+				_pocket += 1;
+
+				printf("\nSOCKET : [ 0x%08x ] : [ OPERATION_TYPE___SOCKET_WRITE %2d ] : send %8d bytes : ", _task->_socket, _task->_thread_internal_id, _task->_byte_send);
+				for (int index = 0; index < _task->_wsa_buffers[0].len; index++)
+				printf("%c", _task->_wsa_buffers[0].buf[index]);
+
+
+				ZeroMemory(&_task->_overlapped, sizeof(OVERLAPPED));
+				ZeroMemory(_task->_wsa_buffers[0].buf, _task->_wsa_buffers[0].len);
+				_task->_byte_send = 0;
+				_task->_byte_recv = 0;
+				_task->_byte_transferred = 0;
+
+				//_task->_operation_type = OPERATION_TYPE___SOCKET_READ;
+				_task->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___WSARecv;
+
+				_task->_is_async = 1;
+
+				//___xtrinit___network___set_new_task(_task, 1);
+				_node->add_new_network_request(_task, 10);
+			}
+		}
+
+		//if (_task->_operation_type == OPERATION_TYPE___SOCKET_READ)
+		if (_task->OPERATION_INDEX == NETWORK_OPERATION_INDEX___SOCKET___WSARecv)
+		{
+			if (_task->_is_async == 0)
+			{
+				_pocket += 1;
+
+				printf("\nSOCKET : [ 0x%08x ] : [ OPERATION_TYPE___SOCKET_READ  %2d ] : recv %8d bytes : ", _task->_socket, _task->_thread_internal_id, _task->_byte_recv);
+				for (int index = 0; index < _task->_wsa_buffers[0].len; index++)
+				printf("%c", _task->_wsa_buffers[0].buf[index]);
+
+				int _int_value = rand() * GetCurrentTime() ^ rand() - rand() * rand();
+				char *_value = (char *)&_int_value;
+
+				for (int index = 0; index < 4; index++)
+					_task->_wsa_buffers[0].buf[54 + index] = _value[index];
+
+				ZeroMemory(&_task->_overlapped, sizeof(OVERLAPPED));
+				_task->_byte_send = 0;
+				_task->_byte_recv = 0;
+				_task->_byte_transferred = 0;
+
+				//_task->_operation_type = OPERATION_TYPE___SOCKET_WRITE;
+				_task->OPERATION_INDEX = NETWORK_OPERATION_INDEX___SOCKET___WSASend;
+
+				_task->_is_async = 1;
+
+				//___xtrinit___network___set_new_task(_task, 1);
+				_node->add_new_network_request(_task, 10);
+			}
+		}
+	}
+}
+
+
+void ___EXPERIMENT___XTRINIT_NETWORK_DECENTRALIZED_NODE___SERVER()
+{
+
+	HANDLE _thread_handle = (HANDLE)_beginthreadex(NULL, 0, ___network_communication, (LPVOID)0, 0, NULL);
+
+	WaitForSingleObject(_thread_handle, INFINITE);
+
+	CloseHandle(_thread_handle);
+
+	getchar();
+};
+
+void ___EXPERIMENT___XTRINIT_NETWORK_DECENTRALIZED_NODE___CLIENT()
+{
+
+	HANDLE _thread_handle = (HANDLE)_beginthreadex(NULL, 0, ___network_communication, (LPVOID)1, 0, NULL);
+
+	WaitForSingleObject(_thread_handle, INFINITE);
+
+	CloseHandle(_thread_handle);
+
+	getchar();
 };
